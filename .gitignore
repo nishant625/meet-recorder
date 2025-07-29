@@ -1,0 +1,26 @@
+# Virtual environment
+venv/
+__pycache__/
+
+# Sensitive files
+.env
+credentials.json
+token.json
+
+# Recordings
+recordings/
+
+# Screenshots
+selenium_error.png
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.pyc
+*.pyo
+*.pyd
+
