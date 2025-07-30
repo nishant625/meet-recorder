@@ -1,5 +1,6 @@
 import os.path
 import datetime
+import json
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -29,14 +30,43 @@ def get_calendar_service():
         token_path = 'token.json'
         print(f"🔍 Falling back to local token: {token_path}")
     
-    # Load existing token
+    # Load existing token with detailed debugging
     if os.path.exists(token_path):
         print("🔍 Loading existing token...")
+        
         try:
-            creds = Credentials.from_authorized_user_file(token_path, SCOPES)
-            print("✅ Token loaded successfully")
+            # First, let's read the file content to see if it's valid JSON
+            print("🔍 Reading token file content...")
+            with open(token_path, 'r') as f:
+                token_content = f.read()
+            
+            print(f"🔍 Token file size: {len(token_content)} characters")
+            
+            # Try to parse as JSON first
+            print("🔍 Parsing token as JSON...")
+            token_data = json.loads(token_content)
+            print("✅ Token JSON parsed successfully")
+            
+            # Check if required fields exist
+            required_fields = ['client_id', 'client_secret', 'refresh_token']
+            for field in required_fields:
+                if field in token_data:
+                    print(f"✅ Found required field: {field}")
+                else:
+                    print(f"❌ Missing required field: {field}")
+            
+            # Now try to create credentials object
+            print("🔍 Creating credentials object...")
+            creds = Credentials.from_authorized_user_info(token_data, SCOPES)
+            print("✅ Credentials object created successfully")
+            
+        except json.JSONDecodeError as e:
+            print(f"❌ Token file is not valid JSON: {e}")
+            return None
         except Exception as e:
             print(f"❌ Error loading token: {e}")
+            import traceback
+            traceback.print_exc()
             return None
     else:
         print("❌ No token file found")
