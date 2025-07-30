@@ -1,7 +1,10 @@
 FROM python:3.11-slim
 
-# Install Chrome and dependencies
+# Install PortAudio and Chrome dependencies
 RUN apt-get update && apt-get install -y \
+    libportaudio2 \
+    portaudio19-dev \
+    libasound-dev \
     wget \
     gnupg \
     unzip \
