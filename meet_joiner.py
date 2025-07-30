@@ -8,18 +8,26 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 from dotenv import load_dotenv
-from audio_recorder import AudioRecorder  # Add this import
+from audio_recorder import AudioRecorder
+import chromedriver_autoinstaller
 
 load_dotenv()
 
 BOT_EMAIL = os.environ["BOT_EMAIL"]
 BOT_PASSWORD = os.environ["BOT_PASSWORD"]
 
-def join_meet(meet_url, meeting_name="meeting"):  # Add meeting_name parameter
+def join_meet(meet_url, meeting_name="meeting"):
+    chromedriver_autoinstaller.install()
     chrome_options = Options()
+    # Add headless mode for container deployment
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--remote-debugging-port=9222")
+    
     chrome_options.add_argument("--use-fake-ui-for-media-stream")
     chrome_options.add_argument("--disable-notifications")
-    chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
@@ -29,38 +37,33 @@ def join_meet(meet_url, meeting_name="meeting"):  # Add meeting_name parameter
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
     wait = WebDriverWait(driver, 30)
-    recorder = AudioRecorder()  # Initialize recorder
+    recorder = AudioRecorder(upload_to_b2=True)
     
     try:
         print("Starting Google login process...")
         
-        # Go directly to Google accounts with the meet URL as continue parameter
+        # Your existing login code stays the same
         login_url = f"https://accounts.google.com/signin/v2/identifier?continue={meet_url}&flowName=GlifWebSignIn&flowEntry=ServiceLogin"
         driver.get(login_url)
         time.sleep(3)
         
         # Enter email with human-like typing
         print("Entering email...")
-        email_input = wait.until(
-            EC.element_to_be_clickable((By.ID, "identifierId"))
-        )
+        email_input = wait.until(EC.element_to_be_clickable((By.ID, "identifierId")))
         email_input.clear()
         
-        # Type email with random delays to mimic human behavior
         for char in BOT_EMAIL:
             email_input.send_keys(char)
-            time.sleep(random.uniform(0.05, 0.15))  # Random delay between keystrokes
+            time.sleep(random.uniform(0.05, 0.15))
         
         time.sleep(1)
         
         # Click Next
-        next_button = wait.until(
-            EC.element_to_be_clickable((By.ID, "identifierNext"))
-        )
+        next_button = wait.until(EC.element_to_be_clickable((By.ID, "identifierNext")))
         next_button.click()
-        time.sleep(4)  # Wait longer for the password page to load
+        time.sleep(4)
         
-        # Handle recovery setup screen if it appears
+        # Handle recovery setup screen
         print("Checking for recovery setup screen...")
         try:
             if "recovery" in driver.current_url.lower() or "backup" in driver.current_url.lower():
@@ -96,11 +99,10 @@ def join_meet(meet_url, meeting_name="meeting"):  # Add meeting_name parameter
         except Exception as e:
             print(f"Recovery screen handling: {e}")
         
-        # Wait for password page and try multiple selectors
+        # Password entry
         print("Waiting for password field...")
         password_input = None
         
-        # Try different selectors for password field
         password_selectors = [
             (By.NAME, "password"),
             (By.XPATH, "//input[@type='password']"),
@@ -112,9 +114,7 @@ def join_meet(meet_url, meeting_name="meeting"):  # Add meeting_name parameter
         
         for selector_type, selector_value in password_selectors:
             try:
-                password_input = wait.until(
-                    EC.element_to_be_clickable((selector_type, selector_value))
-                )
+                password_input = wait.until(EC.element_to_be_clickable((selector_type, selector_value)))
                 print(f"Found password field with selector: {selector_type}, {selector_value}")
                 break
             except:
@@ -123,28 +123,24 @@ def join_meet(meet_url, meeting_name="meeting"):  # Add meeting_name parameter
         if not password_input:
             raise Exception("Could not find password input field with any selector")
         
-        # Enter password with human-like typing
         print("Entering password...")
         password_input.clear()
         time.sleep(1)
         
         for char in BOT_PASSWORD:
             password_input.send_keys(char)
-            time.sleep(random.uniform(0.05, 0.12))  # Random delay between keystrokes
+            time.sleep(random.uniform(0.05, 0.12))
         
         time.sleep(1)
         
         # Click Next for password
-        password_next = wait.until(
-            EC.element_to_be_clickable((By.ID, "passwordNext"))
-        )
+        password_next = wait.until(EC.element_to_be_clickable((By.ID, "passwordNext")))
         password_next.click()
         time.sleep(5)
         
-        # Check if we're redirected to the Meet URL or need additional steps
+        # Check login status
         print("Checking login status...")
         
-        # Wait for either Meet URL or account verification
         try:
             wait.until(lambda driver: 
                 "meet.google.com" in driver.current_url or 
@@ -152,7 +148,6 @@ def join_meet(meet_url, meeting_name="meeting"):  # Add meeting_name parameter
                 "accounts.google.com" not in driver.current_url
             )
             
-            # If not already on Meet, navigate there
             if "meet.google.com" not in driver.current_url:
                 print(f"Navigating to Meet URL: {meet_url}")
                 driver.get(meet_url)
@@ -163,22 +158,19 @@ def join_meet(meet_url, meeting_name="meeting"):  # Add meeting_name parameter
             driver.get(meet_url)
             time.sleep(5)
         
-        # Meet joining and recording logic
+        # Join meeting
         print("Attempting to join the meeting...")
         
-        # Turn off camera and mic, then join
         try:
-            # Wait a bit for Meet to load
             time.sleep(3)
             
-
+            print("Camera and microphone are disabled by default - joining as recording bot")
             
-            # Try to join the meeting
             join_selectors = [
                 "//span[contains(text(), 'Join now')]/parent::button",
                 "//span[contains(text(), 'Ask to join')]/parent::button",
                 "[aria-label*='Join']",
-                "button[jsname='Qx7uuf']"  # Common Google Meet join button
+                "button[jsname='Qx7uuf']"
             ]
             
             joined = False
@@ -199,50 +191,154 @@ def join_meet(meet_url, meeting_name="meeting"):  # Add meeting_name parameter
                 print("Could not find join button, trying Enter key...")
                 driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ENTER)
             
+            time.sleep(5)
+            
         except Exception as e:
             print(f"Error during meeting join: {e}")
         
         print("Bot should now be in the Google Meet.")
         
-        # START AUDIO RECORDING HERE
-        print(f"Starting audio recording for meeting: {meeting_name}")
+        # START AUDIO RECORDING
+        print(f"🎵 Starting audio recording for meeting: {meeting_name}")
         recording_filename = recorder.start_recording(meeting_name, duration_minutes=60)
-        print(f"Recording started: {recording_filename}")
+        print(f"📁 Recording started: {recording_filename}")
         
-        print("Press Ctrl+C to stop the bot and leave the meeting...")
+        print("🎧 Audio recording active... Monitoring for meeting end...")
         
-        # Keep the browser open and recording
+        # ENHANCED MEETING END DETECTION
+        consecutive_end_checks = 0
+        check_interval = 3  # Check every 3 seconds
+        
         try:
             while True:
-                time.sleep(1)
-                # Optional: Check if we're still in the meeting
-                if "meet.google.com" not in driver.current_url:
-                    print("Detected that meeting may have ended or we were disconnected")
-                    break
+                time.sleep(check_interval)
+                
+                current_url = driver.current_url
+                page_title = driver.title.lower()
+                meeting_ended = False
+                
+                # Method 1: URL change detection
+                if "meet.google.com" not in current_url:
+                    print(f"🔍 Detected URL change: {current_url}")
+                    meeting_ended = True
+                
+                # Method 2: Check for meeting end indicators
+                elif "meet.google.com" in current_url:
+                    try:
+                        # Look for specific meeting end messages
+                        end_indicators = [
+                            "//div[contains(text(), 'You left the meeting')]",
+                            "//div[contains(text(), 'left the meeting')]",
+                            "//div[contains(text(), 'Meeting ended')]",
+                            "//div[contains(text(), 'meeting has ended')]",
+                            "//div[contains(text(), 'This meeting has ended')]",
+                            "//span[contains(text(), 'meeting has ended')]",
+                            "//div[contains(text(), 'Thanks for joining')]",
+                            "//button[contains(text(), 'Return to home screen')]",
+                            "//button[contains(text(), 'Join or start a meeting')]",
+                            "//div[contains(text(), 'Rejoin')]",
+                            "//button[contains(@aria-label, 'Leave call')][@aria-pressed='true']"
+                        ]
+                        
+                        for indicator in end_indicators:
+                            try:
+                                element = driver.find_element(By.XPATH, indicator)
+                                if element.is_displayed():
+                                    print(f"🔍 Detected meeting end indicator: '{element.text.strip()}'")
+                                    meeting_ended = True
+                                    break
+                            except:
+                                continue
+                        
+                        # Method 3: Check if we're back on main Meet page
+                        if not meeting_ended:
+                            main_page_indicators = [
+                                "//div[contains(text(), 'Start a meeting')]",
+                                "//button[contains(text(), 'New meeting')]",
+                                "//input[@placeholder='Enter a code or link']",
+                                "//div[@data-meeting-title]",  # Main page meeting title area
+                                "//div[contains(@aria-label, 'Start a meeting')]"
+                            ]
+                            
+                            for indicator in main_page_indicators:
+                                try:
+                                    element = driver.find_element(By.XPATH, indicator)
+                                    if element.is_displayed():
+                                        print("🔍 Detected: Back at Google Meet main page")
+                                        meeting_ended = True
+                                        break
+                                except:
+                                    continue
+                        
+                        # Method 4: Check for participant count = 1 (only bot left)
+                        if not meeting_ended:
+                            try:
+                                # Look for participant indicators showing only 1 person
+                                participant_indicators = [
+                                    "//div[contains(@aria-label, '1 participant')]",
+                                    "//span[text()='1']//parent::div[contains(@aria-label, 'participant')]"
+                                ]
+                                
+                                for indicator in participant_indicators:
+                                    try:
+                                        element = driver.find_element(By.XPATH, indicator)
+                                        if element.is_displayed():
+                                            consecutive_end_checks += 1
+                                            if consecutive_end_checks >= 3:  # Only bot left for 9 seconds
+                                                print("🔍 Detected: Only bot remaining in meeting for 9+ seconds")
+                                                meeting_ended = True
+                                            break
+                                    except:
+                                        continue
+                                else:
+                                    consecutive_end_checks = 0  # Reset if more participants found
+                                    
+                            except:
+                                pass
+                                
+                    except Exception as e:
+                        print(f"Error checking page elements: {e}")
+                        # If we can't check elements consistently, something may be wrong
+                        consecutive_end_checks += 1
+                        if consecutive_end_checks > 10:  # 30 seconds of errors
+                            print("🔍 Unable to verify meeting status for 30+ seconds - assuming meeting ended")
+                            meeting_ended = True
+                
+                if meeting_ended:
+                    print("🛑 Meeting ended detected! Stopping recording...")
+                    recorder.stop_recording()
+                    print("✅ Recording stopped and uploaded to B2")
+                    return  # Exit function to return to calendar monitoring
+                else:
+                    # Reset consecutive checks if meeting is still active
+                    if consecutive_end_checks > 0 and consecutive_end_checks < 3:
+                        consecutive_end_checks = 0
+                        
         except KeyboardInterrupt:
-            print("\nStopping bot and recording...")
-            recorder.stop_recording()
+            print("\nManual stop requested...")
+        except Exception as e:
+            print(f"Error during meeting monitoring: {e}")
+        
+        # Stop recording before cleanup
+        recorder.stop_recording()
             
     except Exception as e:
         print(f"Error occurred: {e}")
-        # Take screenshot for debugging
         driver.save_screenshot("selenium_error.png")
         print("Screenshot saved as selenium_error.png")
         
-        # Stop recording if there's an error
         if recorder.is_recording:
             print("Stopping recording due to error...")
             recorder.stop_recording()
         
-        # Print current URL and page source for debugging
         print(f"Current URL: {driver.current_url}")
         print("Page title:", driver.title)
         raise
     finally:
-        # Ensure recording stops and browser closes
         if recorder.is_recording:
             recorder.stop_recording()
         driver.quit()
+        print("🔄 Returning to calendar monitoring...")
 
 if __name__ == "__main__":
     test_url = input("Enter Google Meet URL to test: ")
