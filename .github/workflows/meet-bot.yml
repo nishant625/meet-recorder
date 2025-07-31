@@ -2,8 +2,8 @@ name: Google Meet Bot
 
 on:
   schedule:
-    - cron: '*/2 9-18 * * 1-5'  # Every 2 minutes during business hours
-    - cron: '*/5 0-8,19-23 * * *'  # Every 5 minutes off-hours
+    - cron: '*/3 9-18 * * 1-5'  # Every 2 minutes during business hours
+    - cron: '*/3 0-8,19-23 * * *'  # Every 5 minutes off-hours
     - cron: '*/5 * * * 0,6'  # Every 5 minutes on weekends
   
   workflow_dispatch: # Manual trigger
