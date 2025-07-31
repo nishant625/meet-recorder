@@ -1,0 +1,80 @@
+name: Google Meet Bot
+
+on:
+  schedule:
+    - cron: '*/2 9-18 * * 1-5'  # Every 2 minutes during business hours
+    - cron: '*/5 0-8,19-23 * * *'  # Every 5 minutes off-hours
+    - cron: '*/5 * * * 0,6'  # Every 5 minutes on weekends
+  
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  check-and-join-meetings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libportaudio2 \
+          portaudio19-dev \
+          libasound2-dev \
+          pulseaudio \
+          wget \
+          gnupg \
+          unzip
+        
+        # Install Chrome
+        wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+        
+        # Start virtual display
+        export DISPLAY=:99
+        Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+        
+        # Start PulseAudio
+        pulseaudio --start --verbose
+    
+    - name: Install Python dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Create credentials files
+      run: |
+        echo '${{ secrets.GOOGLE_CREDENTIALS }}' > credentials.json
+        echo '${{ secrets.GOOGLE_TOKEN }}' > token.json
+    
+    - name: Run Meet Bot
+      env:
+        BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
+        BOT_PASSWORD: ${{ secrets.BOT_PASSWORD }}
+        B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+        B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+        B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+        B2_BUCKET_NAME: ${{ secrets.B2_BUCKET_NAME }}
+        DISPLAY: :99
+      run: |
+        timeout 50m python github_actions_main.py || echo "Bot finished or timed out"
+    
+    - name: Upload logs
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: bot-logs-${{ github.run_number }}
+        path: |
+          *.log
+          *.png
+        retention-days: 7

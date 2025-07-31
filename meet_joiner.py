@@ -13,19 +13,46 @@ import chromedriver_autoinstaller
 
 load_dotenv()
 
+# Environment detection
+IS_GITHUB_ACTIONS = os.environ.get('GITHUB_ACTIONS') == 'true'
+IS_RENDER = os.environ.get('RENDER') == 'true'
+IS_LOCAL = not (IS_GITHUB_ACTIONS or IS_RENDER)
+
 BOT_EMAIL = os.environ["BOT_EMAIL"]
 BOT_PASSWORD = os.environ["BOT_PASSWORD"]
 
 def join_meet(meet_url, meeting_name="meeting"):
+    if IS_GITHUB_ACTIONS:
+        print("🔧 Running in GitHub Actions environment")
+    elif IS_RENDER:
+        print("🔧 Running in Render environment")
+    else:
+        print("🔧 Running in local environment")
+    
     chromedriver_autoinstaller.install()
     chrome_options = Options()
-    # Add headless mode for container deployment
+    
+    # Base Chrome options for headless operation
     chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--remote-debugging-port=9222")
     
+    # GitHub Actions specific optimizations
+    if IS_GITHUB_ACTIONS:
+        chrome_options.add_argument("--disable-web-security")
+        chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+        chrome_options.add_argument("--single-process")
+        chrome_options.add_argument("--disable-background-timer-throttling")
+        chrome_options.add_argument("--disable-renderer-backgrounding")
+        chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--memory-pressure-off")
+        chrome_options.add_argument("--max_old_space_size=4096")
+    else:
+        chrome_options.add_argument("--remote-debugging-port=9222")
+    
+    # Media and automation options
     chrome_options.add_argument("--use-fake-ui-for-media-stream")
     chrome_options.add_argument("--disable-notifications")
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
@@ -36,32 +63,37 @@ def join_meet(meet_url, meeting_name="meeting"):
     driver = webdriver.Chrome(options=chrome_options)
     driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     
-    wait = WebDriverWait(driver, 30)
+    # Adjust timeouts based on environment
+    timeout_duration = 20 if IS_GITHUB_ACTIONS else 30
+    wait = WebDriverWait(driver, timeout_duration)
+    
     recorder = AudioRecorder(upload_to_b2=True)
     
     try:
         print("Starting Google login process...")
         
-        # Your existing login code stays the same
+        # Login URL
         login_url = f"https://accounts.google.com/signin/v2/identifier?continue={meet_url}&flowName=GlifWebSignIn&flowEntry=ServiceLogin"
         driver.get(login_url)
-        time.sleep(3)
+        time.sleep(2 if IS_GITHUB_ACTIONS else 3)
         
         # Enter email with human-like typing
         print("Entering email...")
         email_input = wait.until(EC.element_to_be_clickable((By.ID, "identifierId")))
         email_input.clear()
         
+        # Faster typing in GitHub Actions
+        typing_delay = (0.02, 0.08) if IS_GITHUB_ACTIONS else (0.05, 0.15)
         for char in BOT_EMAIL:
             email_input.send_keys(char)
-            time.sleep(random.uniform(0.05, 0.15))
+            time.sleep(random.uniform(*typing_delay))
         
-        time.sleep(1)
+        time.sleep(0.5 if IS_GITHUB_ACTIONS else 1)
         
         # Click Next
         next_button = wait.until(EC.element_to_be_clickable((By.ID, "identifierNext")))
         next_button.click()
-        time.sleep(4)
+        time.sleep(3 if IS_GITHUB_ACTIONS else 4)
         
         # Handle recovery setup screen
         print("Checking for recovery setup screen...")
@@ -91,11 +123,13 @@ def join_meet(meet_url, meeting_name="meeting"):
                     except:
                         continue
                 
-                if not skipped:
+                if not skipped and not IS_GITHUB_ACTIONS:
                     print("Could not find skip button. Manual intervention may be needed.")
                     input("Please manually skip the recovery setup and press Enter to continue...")
+                elif not skipped and IS_GITHUB_ACTIONS:
+                    print("⚠️ Could not skip recovery screen in GitHub Actions - may cause issues")
                 
-                time.sleep(3)
+                time.sleep(2 if IS_GITHUB_ACTIONS else 3)
         except Exception as e:
             print(f"Recovery screen handling: {e}")
         
@@ -125,18 +159,19 @@ def join_meet(meet_url, meeting_name="meeting"):
         
         print("Entering password...")
         password_input.clear()
-        time.sleep(1)
+        time.sleep(0.5 if IS_GITHUB_ACTIONS else 1)
         
+        # Faster password typing in GitHub Actions
         for char in BOT_PASSWORD:
             password_input.send_keys(char)
-            time.sleep(random.uniform(0.05, 0.12))
+            time.sleep(random.uniform(*typing_delay))
         
-        time.sleep(1)
+        time.sleep(0.5 if IS_GITHUB_ACTIONS else 1)
         
         # Click Next for password
         password_next = wait.until(EC.element_to_be_clickable((By.ID, "passwordNext")))
         password_next.click()
-        time.sleep(5)
+        time.sleep(4 if IS_GITHUB_ACTIONS else 5)
         
         # Check login status
         print("Checking login status...")
@@ -151,18 +186,24 @@ def join_meet(meet_url, meeting_name="meeting"):
             if "meet.google.com" not in driver.current_url:
                 print(f"Navigating to Meet URL: {meet_url}")
                 driver.get(meet_url)
-                time.sleep(5)
+                time.sleep(4 if IS_GITHUB_ACTIONS else 5)
         except:
-            print("Login may require additional verification. Check the browser window.")
-            input("If you see a verification screen, complete it and press Enter to continue...")
-            driver.get(meet_url)
-            time.sleep(5)
+            if IS_GITHUB_ACTIONS:
+                print("⚠️ Login verification required - this may fail in GitHub Actions")
+                # Try to continue anyway
+                driver.get(meet_url)
+                time.sleep(4)
+            else:
+                print("Login may require additional verification. Check the browser window.")
+                input("If you see a verification screen, complete it and press Enter to continue...")
+                driver.get(meet_url)
+                time.sleep(5)
         
         # Join meeting
         print("Attempting to join the meeting...")
         
         try:
-            time.sleep(3)
+            time.sleep(2 if IS_GITHUB_ACTIONS else 3)
             
             print("Camera and microphone are disabled by default - joining as recording bot")
             
@@ -191,7 +232,7 @@ def join_meet(meet_url, meeting_name="meeting"):
                 print("Could not find join button, trying Enter key...")
                 driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ENTER)
             
-            time.sleep(5)
+            time.sleep(4 if IS_GITHUB_ACTIONS else 5)
             
         except Exception as e:
             print(f"Error during meeting join: {e}")
@@ -200,17 +241,33 @@ def join_meet(meet_url, meeting_name="meeting"):
         
         # START AUDIO RECORDING
         print(f"🎵 Starting audio recording for meeting: {meeting_name}")
-        recording_filename = recorder.start_recording(meeting_name, duration_minutes=60)
+        
+        # Adjust recording duration based on environment
+        max_duration = 45 if IS_GITHUB_ACTIONS else 60  # GitHub Actions timeout protection
+        recording_filename = recorder.start_recording(meeting_name, duration_minutes=max_duration)
         print(f"📁 Recording started: {recording_filename}")
+        
+        if IS_GITHUB_ACTIONS:
+            print("⚠️ GitHub Actions mode: Maximum 45-minute recording to avoid timeout")
         
         print("🎧 Audio recording active... Monitoring for meeting end...")
         
-        # ENHANCED MEETING END DETECTION
+        # ENHANCED MEETING END DETECTION with GitHub Actions optimizations
         consecutive_end_checks = 0
-        check_interval = 3  # Check every 3 seconds
+        check_interval = 5 if IS_GITHUB_ACTIONS else 3  # Less frequent checks in GitHub Actions
+        max_meeting_duration = 45 * 60 if IS_GITHUB_ACTIONS else 60 * 60  # 45 or 60 minutes
+        start_time = time.time()
         
         try:
             while True:
+                # GitHub Actions timeout protection
+                elapsed_time = time.time() - start_time
+                if IS_GITHUB_ACTIONS and elapsed_time > max_meeting_duration:
+                    print(f"⏰ Reached maximum recording time ({max_meeting_duration/60:.1f} minutes)")
+                    print("🛑 Stopping to avoid GitHub Actions timeout...")
+                    recorder.stop_recording()
+                    return
+                
                 time.sleep(check_interval)
                 
                 current_url = driver.current_url
@@ -256,7 +313,7 @@ def join_meet(meet_url, meeting_name="meeting"):
                                 "//div[contains(text(), 'Start a meeting')]",
                                 "//button[contains(text(), 'New meeting')]",
                                 "//input[@placeholder='Enter a code or link']",
-                                "//div[@data-meeting-title]",  # Main page meeting title area
+                                "//div[@data-meeting-title]",
                                 "//div[contains(@aria-label, 'Start a meeting')]"
                             ]
                             
@@ -273,7 +330,6 @@ def join_meet(meet_url, meeting_name="meeting"):
                         # Method 4: Check for participant count = 1 (only bot left)
                         if not meeting_ended:
                             try:
-                                # Look for participant indicators showing only 1 person
                                 participant_indicators = [
                                     "//div[contains(@aria-label, '1 participant')]",
                                     "//span[text()='1']//parent::div[contains(@aria-label, 'participant')]"
@@ -284,34 +340,39 @@ def join_meet(meet_url, meeting_name="meeting"):
                                         element = driver.find_element(By.XPATH, indicator)
                                         if element.is_displayed():
                                             consecutive_end_checks += 1
-                                            if consecutive_end_checks >= 3:  # Only bot left for 9 seconds
-                                                print("🔍 Detected: Only bot remaining in meeting for 9+ seconds")
+                                            # More lenient threshold in GitHub Actions
+                                            threshold = 2 if IS_GITHUB_ACTIONS else 3
+                                            if consecutive_end_checks >= threshold:
+                                                duration = threshold * check_interval
+                                                print(f"🔍 Detected: Only bot remaining in meeting for {duration}+ seconds")
                                                 meeting_ended = True
                                             break
                                     except:
                                         continue
                                 else:
-                                    consecutive_end_checks = 0  # Reset if more participants found
+                                    consecutive_end_checks = 0
                                     
                             except:
                                 pass
                                 
                     except Exception as e:
                         print(f"Error checking page elements: {e}")
-                        # If we can't check elements consistently, something may be wrong
                         consecutive_end_checks += 1
-                        if consecutive_end_checks > 10:  # 30 seconds of errors
-                            print("🔍 Unable to verify meeting status for 30+ seconds - assuming meeting ended")
+                        # More aggressive timeout in GitHub Actions
+                        error_threshold = 6 if IS_GITHUB_ACTIONS else 10
+                        if consecutive_end_checks > error_threshold:
+                            duration = error_threshold * check_interval
+                            print(f"🔍 Unable to verify meeting status for {duration}+ seconds - assuming meeting ended")
                             meeting_ended = True
                 
                 if meeting_ended:
                     print("🛑 Meeting ended detected! Stopping recording...")
                     recorder.stop_recording()
                     print("✅ Recording stopped and uploaded to B2")
-                    return  # Exit function to return to calendar monitoring
+                    return
                 else:
                     # Reset consecutive checks if meeting is still active
-                    if consecutive_end_checks > 0 and consecutive_end_checks < 3:
+                    if consecutive_end_checks > 0 and consecutive_end_checks < (2 if IS_GITHUB_ACTIONS else 3):
                         consecutive_end_checks = 0
                         
         except KeyboardInterrupt:
@@ -324,8 +385,14 @@ def join_meet(meet_url, meeting_name="meeting"):
             
     except Exception as e:
         print(f"Error occurred: {e}")
-        driver.save_screenshot("selenium_error.png")
-        print("Screenshot saved as selenium_error.png")
+        
+        # Save screenshot for debugging (but not in GitHub Actions due to space limits)
+        if not IS_GITHUB_ACTIONS:
+            try:
+                driver.save_screenshot("selenium_error.png")
+                print("Screenshot saved as selenium_error.png")
+            except:
+                print("Could not save screenshot")
         
         if recorder.is_recording:
             print("Stopping recording due to error...")
@@ -340,7 +407,24 @@ def join_meet(meet_url, meeting_name="meeting"):
         driver.quit()
         print("🔄 Returning to calendar monitoring...")
 
-if __name__ == "__main__":
+def test_meet_join():
+    """Test function for verifying Meet joining functionality"""
+    if IS_GITHUB_ACTIONS:
+        print("⚠️ Cannot run interactive test in GitHub Actions")
+        return False
+    
     test_url = input("Enter Google Meet URL to test: ")
     test_name = input("Enter meeting name (optional): ") or "test_meeting"
-    join_meet(test_url, test_name)
+    
+    try:
+        join_meet(test_url, test_name)
+        return True
+    except Exception as e:
+        print(f"Test failed: {e}")
+        return False
+
+if __name__ == "__main__":
+    if IS_GITHUB_ACTIONS:
+        print("🤖 Meet joiner ready for GitHub Actions")
+    else:
+        test_meet_join()
